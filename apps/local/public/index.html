@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parley</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; height: 100vh; }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr 300px;
+      height: 100vh;
+      gap: 1px;
+      background: #e0e0e0;
+    }
+    .panel {
+      background: #fff;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .panel h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel" id="agent-thread">
+      <h2>Agent Thread</h2>
+    </div>
+    <div class="panel" id="main-thread">
+      <h2>Main Thread</h2>
+    </div>
+    <div class="panel" id="mediator-tracker">
+      <h2>Mediator Tracker</h2>
+    </div>
+  </div>
+</body>
+</html>

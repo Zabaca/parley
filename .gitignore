@@ -1,2 +1,9 @@
-.claude/
+node_modules/
+.next/
+.vercel/
+.turso/
+dist/
+.env
+.env.local
+.env*.local
 .idea/
