@@ -64,8 +64,15 @@ User A types raw message
 - **Agent SDK for personal agents, Vercel AI SDK for mediator** — personal agents leverage the user's Claude subscription. The mediator uses GPT-4.1 mini via API for cost efficiency.
 - **Token-only sessions** — no user accounts. A short-lived token pairs two users into a session.
 - **Conversations are persisted** — Turso/libSQL for the mediator's authoritative state. Ably channel history for message durability.
+- **Mediator is async, not blocking** — messages flow between users immediately. The mediator processes in the background and catches up. The UI indicates which messages the mediator has processed so agents and users are aware of mediator coverage.
+- **One Ably channel per session** — all message types (main thread, mediator updates, presence) share a single channel.
+- **Monorepo** — local Bun app and Vercel backend live in the same repository.
 
-## Open Design Questions
+### Local development
+
+Two Claude Code sessions, two browsers. Run `/parley` in one session and `/parley <uuid>` in the other. Each launches its own Bun app on a different local port, opening a separate browser tab.
+
+## Design Decisions
 
 ### ~~Data model~~
 
