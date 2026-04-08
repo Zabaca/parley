@@ -1,4 +1,5 @@
 import { resolve } from "path";
+import { api } from "./api/client.js";
 
 const PORT = 3001;
 const publicDir = resolve(import.meta.dir, "../public");
@@ -8,9 +9,22 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
-    // API routes placeholder
+    // Proxy API routes to platform via typed ts-rest client
+    if (url.pathname === "/api/sessions" && req.method === "POST") {
+      const result = await api.createSession();
+      return Response.json(result.body, { status: result.status });
+    }
+    if (url.pathname === "/api/sessions" && req.method === "GET") {
+      const id = url.searchParams.get("id") ?? "";
+      const result = await api.getSession({ query: { id } });
+      return Response.json(result.body, { status: result.status });
+    }
+    if (url.pathname === "/api/ably-token" && req.method === "POST") {
+      const result = await api.requestAblyToken();
+      return Response.json(result.body, { status: result.status });
+    }
     if (url.pathname.startsWith("/api/")) {
-      return Response.json({ status: "not implemented" }, { status: 501 });
+      return Response.json({ error: "not found" }, { status: 404 });
     }
 
     // Serve static files from public/
