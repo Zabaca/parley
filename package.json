@@ -1,5 +1,13 @@
 {
   "name": "parley",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"]
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter '@parley/platform' --filter '@parley/local' dev",
+    "dev:platform": "bun run --filter '@parley/platform' dev",
+    "dev:local": "bun run --filter '@parley/local' dev",
+    "db:push": "bun run --filter '@parley/platform' db:push",
+    "db:migrate": "bun run --filter '@parley/platform' db:migrate",
+    "db:studio": "bun run --filter '@parley/platform' db:studio"
+  }
 }
