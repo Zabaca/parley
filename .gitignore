@@ -12,3 +12,8 @@ dist/
 .gsd/
 .bg-shell/
 .mcp.json
+
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

@@ -90,19 +90,38 @@ export const mediator = inngest.createFunction(
         context.actionItems.length > 0 ? `Action items:\n${context.actionItems.map((a: any) => `- ${a.content} (${a.assignedTo}, ${a.status})`).join("\n")}` : "",
       ].filter(Boolean).join("\n\n");
 
-      const { object } = await generateObject({
-        model: openrouter("google/gemini-2.0-flash-exp:free"),
-        schema: MediatorOutputSchema,
-        system: `You are a neutral mediator tracking a conversation between two parties. You do NOT advocate for either side. Your job is to:
+      let object;
+      try {
+        const result = await generateObject({
+          model: openrouter("moonshotai/kimi-k2.5"),
+          schema: MediatorOutputSchema,
+          system: `You are a neutral mediator tracking a conversation between two parties. You do NOT advocate for either side. Your job is to:
 1. Identify new topics raised in the conversation
 2. Track when existing topics are resolved or parked
 3. Record facts that both parties agree on or state
 4. Log action items and commitments
 5. Detect if the conversation is drifting from active topics
 
-Be precise and conservative — only extract what is clearly stated or implied. Don't invent topics or facts that aren't present.`,
-        prompt: `Conversation so far:\n${conversationText}\n\n${trackerState ? `Current tracker state:\n${trackerState}\n\n` : ""}Analyze the latest message and update the tracker.`,
-      });
+Be precise and conservative — only extract what is clearly stated or implied. Don't invent topics or facts that aren't present.
+
+You MUST return a JSON object with EXACTLY these top-level keys (camelCase, no substitutions):
+- "newTopics": array of { "title": string, "status": "open"|"resolved"|"parked" }
+- "topicUpdates": array of { "title": string, "newStatus": "open"|"resolved"|"parked" }
+- "newFacts": array of { "content": string }
+- "newActionItems": array of { "content": string, "assignedTo": "User A"|"User B"|"both" }
+- "driftDetected": boolean
+- "driftNote": string (optional)
+
+Do NOT use snake_case. Do NOT rename fields. Do NOT add extra fields. Empty arrays are fine if nothing applies.`,
+          prompt: `Conversation so far:\n${conversationText}\n\n${trackerState ? `Current tracker state:\n${trackerState}\n\n` : ""}Analyze the latest message and update the tracker.`,
+        });
+        object = result.object;
+      } catch (err: any) {
+        console.error("[mediator] generateObject failed");
+        console.error("[mediator] raw text from model:", err.text ?? err.cause?.value ?? "(no raw text on error)");
+        console.error("[mediator] validation issues:", err.cause?.message ?? err.message);
+        throw err;
+      }
 
       return object;
     });
