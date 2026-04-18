@@ -91,7 +91,7 @@ export const mediator = inngest.createFunction(
       ].filter(Boolean).join("\n\n");
 
       const { object } = await generateObject({
-        model: openrouter("google/gemini-2.0-flash-exp:free"),
+        model: openrouter("google/gemini-2.5-flash-lite"),
         schema: MediatorOutputSchema,
         system: `You are a neutral mediator tracking a conversation between two parties. You do NOT advocate for either side. Your job is to:
 1. Identify new topics raised in the conversation

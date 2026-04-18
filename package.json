@@ -1,13 +1,25 @@
 {
   "name": "parley",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "bun run --filter '@parley/platform' --filter '@parley/local' dev",
+    "dev": "inngest-cli dev --no-discovery -u http://localhost:3000/api/inngest & bun run --filter '@parley/platform' --filter '@parley/local' dev",
+    "dev:inngest": "bun run --filter '@parley/platform' dev:inngest",
     "dev:platform": "bun run --filter '@parley/platform' dev",
     "dev:local": "bun run --filter '@parley/local' dev",
     "db:push": "bun run --filter '@parley/platform' db:push",
     "db:migrate": "bun run --filter '@parley/platform' db:migrate",
     "db:studio": "bun run --filter '@parley/platform' db:studio"
+  },
+  "devDependencies": {
+    "inngest-cli": "^1.17.9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "inngest-cli"
+    ]
   }
 }

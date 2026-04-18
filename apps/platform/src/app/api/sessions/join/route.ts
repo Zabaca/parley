@@ -4,7 +4,8 @@ import { sessions, participants } from "@parley/shared/db";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
-  const { sessionId } = await req.json();
+  const body = await req.json();
+  const { sessionId, participantId: returningId } = body as { sessionId: string; participantId?: string };
 
   const session = await db.query.sessions.findFirst({
     where: eq(sessions.id, sessionId),
@@ -23,14 +24,21 @@ export async function POST(req: NextRequest) {
     where: eq(participants.sessionId, sessionId),
   });
 
+  // Rejoin case — if the client knows its participantId, match it
+  if (returningId) {
+    const match = existingParticipants.find(p => p.id === returningId);
+    if (match) {
+      return NextResponse.json({
+        sessionId,
+        participantId: match.id,
+        userLabel: match.userLabel,
+      });
+    }
+  }
+
   if (existingParticipants.length >= 2) {
-    // Rejoin case — return the second participant
-    const p = existingParticipants[1];
-    return NextResponse.json({
-      sessionId,
-      participantId: p.id,
-      userLabel: p.userLabel,
-    });
+    // Both slots filled, no returning ID matched — return error
+    return NextResponse.json({ error: "Session is full" }, { status: 409 });
   }
 
   // Create second participant

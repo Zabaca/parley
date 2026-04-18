@@ -237,6 +237,22 @@ const state = {
 };
 
 // ========== SESSION MANAGEMENT ==========
+function saveIdentity() {
+  if (state.sessionId && state.participantId) {
+    localStorage.setItem('parley:' + state.sessionId, JSON.stringify({
+      participantId: state.participantId,
+      userLabel: state.userLabel,
+    }));
+  }
+}
+
+function loadIdentity(sessionId) {
+  try {
+    const raw = localStorage.getItem('parley:' + sessionId);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 async function createSession() {
   try {
     const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -244,6 +260,7 @@ async function createSession() {
     state.sessionId = data.id;
     state.participantId = data.participantId;
     state.userLabel = data.userLabel || 'User A';
+    saveIdentity();
 
     await connectAbly();
     showSession();
@@ -263,15 +280,17 @@ async function joinSession() {
     if (data.status === 'closed') { showError('Session is closed'); return; }
 
     state.sessionId = sessionId;
+    const saved = loadIdentity(sessionId);
     const joinRes = await fetch('/api/sessions/join', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({ sessionId, participantId: saved?.participantId }),
     });
     const joinData = await joinRes.json();
     if (joinRes.status !== 200) { showError(joinData.error || 'Failed to join'); return; }
     state.participantId = joinData.participantId;
     state.userLabel = joinData.userLabel;
+    saveIdentity();
 
     // Load existing data
     const [msgRes, medRes] = await Promise.all([
@@ -291,16 +310,21 @@ async function joinSession() {
 }
 
 // Check URL for session ID — supports ?session=<id> and /<id> paths
+// Auto-rejoin if we have saved credentials for this session
 (function() {
   const params = new URLSearchParams(window.location.search);
   let sid = params.get('session');
-  // Also check path — /uuid pattern (skip empty and known routes)
   if (!sid) {
     const pathId = window.location.pathname.slice(1);
     if (pathId && /^[0-9a-f-]{8,}$/i.test(pathId)) sid = pathId;
   }
   if (sid) {
     document.getElementById('join-session-input').value = sid;
+    const saved = loadIdentity(sid);
+    if (saved?.participantId) {
+      // Auto-rejoin — we were in this session before
+      joinSession();
+    }
   }
 })();
 
