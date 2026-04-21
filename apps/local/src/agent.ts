@@ -122,8 +122,8 @@ export async function chat(params: {
 
   // Try models in order of preference
   const models = [
-    "anthropic/claude-sonnet-4",
-    "google/gemini-2.0-flash-001",
+    "moonshotai/kimi-k2.5",
+    "anthropic/claude-haiku-4.5",
     "meta-llama/llama-3.3-70b-instruct",
   ];
 
