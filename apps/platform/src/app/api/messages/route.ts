@@ -40,13 +40,16 @@ export async function POST(req: NextRequest) {
   const channel = ably.channels.get(`session:${sessionId}`);
   await channel.publish("message", msg);
 
-  // Fire Inngest event for mediator processing (non-blocking)
-  inngest.send({
-    name: "parley/message.received",
-    data: { sessionId, messageId: id },
-  }).catch((err) => {
+  // TODO(waitUntil): on Vercel, wrap this in waitUntil from @vercel/functions so it survives
+  // response return without blocking the client. Awaiting is correct for local/Node dev.
+  try {
+    await inngest.send({
+      name: "parley/message.received",
+      data: { sessionId, messageId: id },
+    });
+  } catch (err: any) {
     console.warn("Inngest send failed (mediator will not process this message):", err.message);
-  });
+  }
 
   return NextResponse.json(msg);
 }

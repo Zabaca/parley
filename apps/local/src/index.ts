@@ -58,14 +58,22 @@ const server = Bun.serve({
 
     // Serve static files from public/
     const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = Bun.file(resolve(publicDir, `.${filePath}`));
+    const resolved = resolve(publicDir, `.${filePath}`);
+    if (!resolved.startsWith(publicDir)) {
+      return new Response("Not found", { status: 404 });
+    }
+    const file = Bun.file(resolved);
 
     if (await file.exists()) {
       return new Response(file);
     }
 
     // Fallback to index.html for SPA routing
-    return new Response(Bun.file(resolve(publicDir, "index.html")));
+    const fallback = resolve(publicDir, "index.html");
+    if (!fallback.startsWith(publicDir)) {
+      return new Response("Not found", { status: 404 });
+    }
+    return new Response(Bun.file(fallback));
   },
 });
 

@@ -21,6 +21,7 @@ const MediatorOutputSchema = z.object({
     status: z.enum(["open", "resolved", "parked"]),
   })).describe("New topics introduced in this message"),
   topicUpdates: z.array(z.object({
+    id: z.string().optional(),
     title: z.string(),
     newStatus: z.enum(["open", "resolved", "parked"]),
   })).describe("Existing topics whose status changed"),
@@ -68,7 +69,7 @@ export const mediator = inngest.createFunction(
           sender: m.sender?.userLabel ?? "Unknown",
           content: m.polishedContent,
         })),
-        topics: existingTopics.map(t => ({ title: t.title, status: t.status })),
+        topics: existingTopics.map(t => ({ id: t.id, title: t.title, status: t.status })),
         facts: existingFacts.map(f => f.content),
         actionItems: existingActions.map(a => ({
           content: a.content,
@@ -85,7 +86,7 @@ export const mediator = inngest.createFunction(
         .join("\n");
 
       const trackerState = [
-        context.topics.length > 0 ? `Current topics:\n${context.topics.map((t: any) => `- ${t.title} (${t.status})`).join("\n")}` : "",
+        context.topics.length > 0 ? `Current topics (use "id" to reference an existing topic in topicUpdates):\n${context.topics.map((t: any) => `- id=${t.id} title="${t.title}" status=${t.status}`).join("\n")}` : "",
         context.facts.length > 0 ? `Established facts:\n${context.facts.map((f: string) => `- ${f}`).join("\n")}` : "",
         context.actionItems.length > 0 ? `Action items:\n${context.actionItems.map((a: any) => `- ${a.content} (${a.assignedTo}, ${a.status})`).join("\n")}` : "",
       ].filter(Boolean).join("\n\n");
@@ -106,7 +107,7 @@ Be precise and conservative — only extract what is clearly stated or implied. 
 
 You MUST return a JSON object with EXACTLY these top-level keys (camelCase, no substitutions):
 - "newTopics": array of { "title": string, "status": "open"|"resolved"|"parked" }
-- "topicUpdates": array of { "title": string, "newStatus": "open"|"resolved"|"parked" }
+- "topicUpdates": array of { "id": string (optional, the existing topic's id — include this when updating an existing topic), "title": string, "newStatus": "open"|"resolved"|"parked" }
 - "newFacts": array of { "content": string }
 - "newActionItems": array of { "content": string, "assignedTo": "User A"|"User B"|"both" }
 - "driftDetected": boolean
@@ -140,16 +141,15 @@ Do NOT use snake_case. Do NOT rename fields. Do NOT add extra fields. Empty arra
       }
 
       // Update existing topic statuses
-      for (const update of analysis.topicUpdates) {
-        const existing = await db.query.topics.findFirst({
+      if (analysis.topicUpdates.length > 0) {
+        const allTopics = await db.query.topics.findMany({
           where: eq(topics.sessionId, sessionId),
         });
-        if (existing) {
-          // Find by title match
-          const allTopics = await db.query.topics.findMany({
-            where: eq(topics.sessionId, sessionId),
-          });
-          const match = allTopics.find(t => t.title.toLowerCase() === update.title.toLowerCase());
+        for (const update of analysis.topicUpdates) {
+          let match = update.id ? allTopics.find(t => t.id === update.id) : undefined;
+          if (!match) {
+            match = allTopics.find(t => t.title.toLowerCase() === update.title.toLowerCase());
+          }
           if (match) {
             await db.update(topics)
               .set({

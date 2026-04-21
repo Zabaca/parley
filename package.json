@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "inngest-cli dev --no-discovery -u http://localhost:3000/api/inngest & bun run --filter '@parley/platform' --filter '@parley/local' dev",
+    "dev": "concurrently -n inngest,platform,local -c magenta,cyan,yellow \"bun run dev:inngest\" \"bun run dev:platform\" \"bun run dev:local\"",
     "dev:inngest": "bun run --filter '@parley/platform' dev:inngest",
     "dev:platform": "bun run --filter '@parley/platform' dev",
     "dev:local": "bun run --filter '@parley/local' dev",
@@ -15,6 +15,7 @@
     "db:studio": "bun run --filter '@parley/platform' db:studio"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "inngest-cli": "^1.17.9"
   },
   "pnpm": {
