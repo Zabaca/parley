@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -90,6 +90,39 @@ export const actionItems = sqliteTable("action_items", {
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+// Relations
+export const sessionsRelations = relations(sessions, ({ many }) => ({
+  participants: many(participants),
+  messages: many(messages),
+  topics: many(topics),
+  facts: many(facts),
+  actionItems: many(actionItems),
+}));
+
+export const participantsRelations = relations(participants, ({ one }) => ({
+  session: one(sessions, { fields: [participants.sessionId], references: [sessions.id] }),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  session: one(sessions, { fields: [messages.sessionId], references: [sessions.id] }),
+  sender: one(participants, { fields: [messages.senderId], references: [participants.id] }),
+}));
+
+export const topicsRelations = relations(topics, ({ one }) => ({
+  session: one(sessions, { fields: [topics.sessionId], references: [sessions.id] }),
+  sourceMessage: one(messages, { fields: [topics.sourceMessageId], references: [messages.id] }),
+}));
+
+export const factsRelations = relations(facts, ({ one }) => ({
+  session: one(sessions, { fields: [facts.sessionId], references: [sessions.id] }),
+  sourceMessage: one(messages, { fields: [facts.sourceMessageId], references: [messages.id] }),
+}));
+
+export const actionItemsRelations = relations(actionItems, ({ one }) => ({
+  session: one(sessions, { fields: [actionItems.sessionId], references: [sessions.id] }),
+  sourceMessage: one(messages, { fields: [actionItems.sourceMessageId], references: [messages.id] }),
+}));
 
 // Inferred types
 export type Session = typeof sessions.$inferSelect;

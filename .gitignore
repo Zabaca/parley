@@ -7,3 +7,13 @@ dist/
 .env.local
 .env*.local
 .idea/
+
+
+.gsd/
+.bg-shell/
+.mcp.json
+
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

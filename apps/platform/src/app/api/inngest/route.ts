@@ -7,4 +7,7 @@ const handler = serve({
   functions: [mediator],
 });
 
-export const { GET, POST, PUT } = handler;
+// Type assertion needed for Next.js 16 compatibility with Inngest
+export const GET = handler.GET as any;
+export const POST = handler.POST as any;
+export const PUT = handler.PUT as any;
