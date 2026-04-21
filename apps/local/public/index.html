@@ -66,15 +66,45 @@
     ::-webkit-scrollbar-thumb { background: #1f2020; border-radius: 10px; }
     @keyframes pulse-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+    @keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+    @keyframes slit-drift { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+    .sheet-enter { animation: sheet-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .sheet-exit { animation: sheet-out 0.24s ease-in; }
+    .backdrop-enter { animation: fade-in 0.28s ease-out; }
+    .backdrop-exit { animation: fade-out 0.24s ease-in; }
+    .animate-slit-drift { background-size: 200% 100%; animation: slit-drift 8s ease-in-out infinite alternate; }
+    /* Polish card replaces input on mobile */
+    @media (max-width: 767px) {
+      #col-agent.polish-active .agent-input-wrapper { display: none; }
+    }
+    /* Keep inputs from triggering iOS zoom on focus */
+    @media (max-width: 767px) {
+      textarea, input[type=text] { font-size: 16px; }
+    }
   </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- Top Nav Bar -->
-<header class="fixed top-0 w-full z-50 bg-[#131313]/60 backdrop-blur-xl shadow-[0px_0px_40px_0px_rgba(173,198,255,0.08)] flex justify-between items-center px-8 h-16">
+<!-- Mobile Header -->
+<header class="md:hidden fixed top-0 w-full z-50 bg-[#131313]/70 backdrop-blur-xl border-b border-outline-variant/15 shadow-[0px_0px_24px_0px_rgba(173,198,255,0.05)] flex items-center px-4 h-[52px]">
+  <span class="text-xl font-black tracking-tighter text-on-surface">Parley</span>
+  <div id="mobile-status-chip" onclick="openOverflowMenu()" class="ml-auto mr-1 flex items-center gap-2 bg-surface-container-high px-3 py-1 rounded-full max-w-[180px] cursor-pointer active:scale-95 transition-transform duration-150">
+    <span class="mobile-status-dot w-1.5 h-1.5 rounded-full bg-on-surface-variant shrink-0"></span>
+    <span class="mobile-status-text text-[10px] font-bold uppercase tracking-widest text-on-surface-variant truncate">Offline</span>
+  </div>
+  <button onclick="openOverflowMenu()" class="p-2 text-on-surface-variant hover:bg-surface-bright transition-colors rounded-full active:scale-95 duration-150">
+    <span class="material-symbols-outlined">more_vert</span>
+  </button>
+</header>
+
+<!-- Desktop Top Nav Bar -->
+<header class="hidden md:flex fixed top-0 w-full z-50 bg-[#131313]/60 backdrop-blur-xl shadow-[0px_0px_40px_0px_rgba(173,198,255,0.08)] justify-between items-center px-8 h-16">
   <div class="flex items-center gap-8">
     <span class="text-2xl font-black tracking-tighter text-[#e7e5e5]">Parley</span>
-    <div class="hidden md:flex gap-6 items-center">
+    <div class="flex gap-6 items-center">
       <button onclick="showColumn('agent')" id="tab-agent" class="font-medium tracking-tight text-primary font-bold px-3 py-1 rounded">Agent</button>
       <button onclick="showColumn('main')" id="tab-main" class="font-medium tracking-tight text-on-surface-variant hover:bg-surface-bright transition-colors duration-300 px-3 py-1 rounded">Main</button>
       <button onclick="showColumn('mediator')" id="tab-mediator" class="font-medium tracking-tight text-on-surface-variant hover:bg-surface-bright transition-colors duration-300 px-3 py-1 rounded">Mediator</button>
@@ -104,99 +134,230 @@
 </header>
 
 <!-- Main Layout -->
-<main class="flex-1 mt-16 flex overflow-hidden">
+<main class="flex-1 mt-[52px] md:mt-16 flex flex-col overflow-hidden">
 
-  <!-- Column 1: Agent Thread (40%) -->
-  <section id="col-agent" class="w-[40%] flex flex-col bg-surface border-r border-outline-variant/[0.15]">
-    <div class="px-6 py-4 flex items-center justify-between bg-surface-container-low">
-      <div class="flex items-center gap-3">
-        <span class="material-symbols-outlined text-primary">person_search</span>
-        <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface">Agent Private Thread</h2>
+  <!-- Mobile Mediator Slit -->
+  <div id="mediator-slit" onclick="openMediatorSheet()" class="md:hidden relative h-10 px-4 bg-surface-container border-b border-outline-variant/20 flex items-center justify-between cursor-pointer active:bg-surface-container-high transition-colors flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5" data-slit="topics">
+        <span class="material-symbols-outlined text-[14px] text-on-surface-variant slit-icon">forum</span>
+        <span class="text-[11px] font-medium text-on-surface slit-count" data-bind="slit-topics-count">0</span>
       </div>
-      <span class="text-[10px] text-on-surface-variant font-medium bg-surface-container-highest px-2 py-0.5 rounded">ENCRYPTED</span>
+      <div class="w-px h-3 bg-outline-variant/40"></div>
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[14px] text-on-surface-variant">verified</span>
+        <span class="text-[11px] font-medium text-on-surface" data-bind="slit-facts-count">0</span>
+      </div>
+      <div class="w-px h-3 bg-outline-variant/40"></div>
+      <div class="flex items-center gap-1.5" data-slit="actions">
+        <span class="material-symbols-outlined text-[14px] text-on-surface-variant slit-icon">task_alt</span>
+        <span class="text-[11px] font-medium text-on-surface slit-count" data-bind="slit-actions-count">0</span>
+      </div>
     </div>
-    <div id="agent-messages" class="flex-1 overflow-y-auto p-6 space-y-6">
-    </div>
-    <!-- Polish proposal area -->
-    <div id="polish-proposal" class="hidden px-6 pb-4">
-      <div class="flex flex-col items-end ml-auto max-w-[90%]">
-        <div class="flex items-center gap-2 mb-2">
-          <span class="text-[10px] font-bold text-primary uppercase tracking-tighter text-right">Proposed Polish</span>
+    <span class="material-symbols-outlined text-[18px] text-on-surface-variant slit-chevron">expand_more</span>
+    <div class="slit-urgent-line absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-tertiary/40 to-transparent hidden animate-slit-drift"></div>
+  </div>
+
+  <!-- Columns Container -->
+  <div class="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+
+    <!-- Col: Agent Thread (private workspace) — desktop left, mobile bottom -->
+    <section id="col-agent" class="flex flex-col order-3 md:order-1 flex-1 min-h-0 w-full md:w-[40%] md:flex-none bg-surface md:border-r border-outline-variant/[0.15]">
+      <div class="hidden md:flex px-6 py-4 items-center justify-between bg-surface-container-low">
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-primary">person_search</span>
+          <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface">Agent Private Thread</h2>
         </div>
-        <div class="bg-surface-container-highest border border-primary/20 p-5 rounded-xl rounded-tr-none shadow-2xl w-full">
-          <p id="polish-text" class="text-on-surface text-sm leading-relaxed mb-4 italic text-on-surface-variant"></p>
-          <div class="flex gap-3">
-            <button onclick="sendPolished()" class="flex-1 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-bold py-2 rounded transition-transform active:scale-95">
-              Send Polished
-            </button>
-            <button onclick="sendRaw()" class="flex-1 border border-outline-variant/30 text-on-surface text-xs font-medium py-2 rounded hover:bg-surface-bright transition-colors">
-              Send Raw
-            </button>
+        <span class="text-[10px] text-on-surface-variant font-medium bg-surface-container-highest px-2 py-0.5 rounded">ENCRYPTED</span>
+      </div>
+      <div id="agent-messages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 min-h-0">
+      </div>
+      <!-- Polish proposal area -->
+      <div id="polish-proposal" class="hidden px-3 md:px-6 pb-3 md:pb-4 pt-2 md:pt-0">
+        <div class="flex flex-col w-full md:items-end md:ml-auto md:max-w-[90%]">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="material-symbols-outlined text-[14px] text-primary md:hidden">auto_awesome</span>
+            <span class="text-[10px] font-bold text-primary uppercase tracking-[0.15em] md:text-right">Proposed Polish</span>
+          </div>
+          <div class="bg-surface-container-highest border border-primary/20 p-4 md:p-5 rounded-xl md:rounded-tr-none shadow-2xl w-full">
+            <p id="polish-text" class="text-on-surface text-sm leading-relaxed mb-4 italic text-on-surface-variant"></p>
+            <div class="flex flex-col md:flex-row gap-2 md:gap-3">
+              <button onclick="sendPolished()" class="flex-1 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-bold py-2.5 md:py-2 rounded transition-transform active:scale-95 uppercase tracking-wide">
+                Send Polished
+              </button>
+              <button onclick="sendRaw()" class="flex-1 border border-outline-variant/30 text-on-surface text-xs font-medium py-2.5 md:py-2 rounded hover:bg-surface-bright transition-colors uppercase tracking-wide">
+                Send Raw
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <!-- Input Area -->
-    <div class="p-6 bg-surface-container-low">
-      <div class="relative group">
-        <textarea id="agent-input" class="w-full bg-surface-container-highest border-none rounded-lg p-4 text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-0 focus:bg-surface-bright transition-all resize-none" placeholder="Message Agent..." rows="2" onkeydown="handleAgentInput(event)"></textarea>
-        <div class="absolute bottom-0 left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-focus-within:w-full"></div>
+      <!-- Input Area -->
+      <div class="agent-input-wrapper p-3 md:p-6 bg-surface-container-low pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-6">
+        <div class="relative group flex items-center gap-2">
+          <div class="flex-1 relative">
+            <textarea id="agent-input" class="w-full bg-surface-container-highest border-none rounded-lg p-3 md:p-4 text-sm text-on-surface placeholder:text-on-surface-variant focus:ring-0 focus:bg-surface-bright transition-all resize-none" placeholder="Message Agent..." rows="1" onkeydown="handleAgentInput(event)" oninput="autoGrowInput(this); toggleSendButton()"></textarea>
+            <div class="absolute bottom-0 left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-focus-within:w-full"></div>
+          </div>
+          <button id="agent-send-btn" onclick="submitAgentInput()" disabled aria-label="Send" class="md:hidden shrink-0 w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center active:scale-95 disabled:bg-surface-container-high disabled:text-on-surface-variant transition-all mb-1">
+            <span class="material-symbols-outlined text-[20px]">arrow_upward</span>
+          </button>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Column 2: Main Thread (35%) -->
-  <section id="col-main" class="w-[35%] flex flex-col bg-surface-container-lowest border-r border-outline-variant/[0.15]">
-    <div class="px-6 py-4 flex items-center gap-3 bg-surface-container-low border-b border-outline-variant/[0.05]">
-      <span class="material-symbols-outlined text-secondary">forum</span>
-      <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface">Shared Record</h2>
+    <!-- Mobile Divider (between main & agent) -->
+    <div class="md:hidden order-2 flex-shrink-0 h-7 bg-surface flex items-center relative border-y border-outline-variant/10">
+      <div class="h-px flex-1 bg-gradient-to-r from-transparent via-secondary/25 to-secondary/35"></div>
+      <div class="px-2">
+        <span class="block px-2.5 py-0.5 rounded-full bg-surface-container-high text-[9px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">You + Agent</span>
+      </div>
+      <div class="h-px flex-1 bg-gradient-to-l from-transparent via-primary/25 to-primary/35"></div>
     </div>
-    <div id="main-messages" class="flex-1 overflow-y-auto p-6 space-y-10">
-      <div class="text-center text-on-surface-variant text-sm mt-12">No messages yet</div>
-    </div>
-  </section>
 
-  <!-- Column 3: Mediator Tracker (25%) -->
-  <section id="col-mediator" class="w-[25%] flex flex-col bg-surface overflow-y-auto">
-    <div id="unresolved-banner" class="bg-tertiary-container/10 border-b border-tertiary-container/20 p-6 hidden">
-      <div class="flex items-center gap-3 text-tertiary">
-        <span class="material-symbols-outlined">notification_important</span>
-        <span id="unresolved-count" class="text-sm font-black uppercase tracking-tight">0 items remain</span>
+    <!-- Col: Main Thread (shared record) — desktop center, mobile top -->
+    <section id="col-main" class="flex flex-col order-1 md:order-2 w-full flex-[0_0_45%] md:w-[35%] md:flex-none min-h-0 bg-surface-container-lowest md:border-r border-outline-variant/[0.15]">
+      <div class="hidden md:flex px-6 py-4 items-center gap-3 bg-surface-container-low border-b border-outline-variant/[0.05]">
+        <span class="material-symbols-outlined text-secondary">forum</span>
+        <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface">Shared Record</h2>
       </div>
-    </div>
-    <div class="p-6 space-y-6">
-      <div>
-        <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Current Topics</h3>
-        <div id="topics-list" class="grid grid-cols-1 gap-2">
-          <div class="text-xs text-on-surface-variant italic">No topics yet</div>
+      <div id="main-messages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 md:space-y-10 min-h-0">
+        <div class="text-center text-on-surface-variant text-sm mt-12">No messages yet</div>
+      </div>
+    </section>
+
+    <!-- Col: Mediator Tracker — desktop only (mobile uses slit + bottom sheet) -->
+    <section id="col-mediator" class="hidden md:flex md:order-3 flex-col md:w-[25%] md:flex-none bg-surface overflow-y-auto">
+      <div data-bind="unresolved-banner" class="bg-tertiary-container/10 border-b border-tertiary-container/20 p-6 hidden">
+        <div class="flex items-center gap-3 text-tertiary">
+          <span class="material-symbols-outlined">notification_important</span>
+          <span data-bind="unresolved-count" class="text-sm font-black uppercase tracking-tight">0 items remain</span>
         </div>
       </div>
-      <div>
-        <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Confirmed Facts</h3>
-        <ul id="facts-list" class="space-y-3">
-          <li class="text-xs text-on-surface-variant italic">No facts established</li>
-        </ul>
-      </div>
-      <div>
-        <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Action Items</h3>
-        <div id="action-items-list" class="space-y-3">
-          <div class="text-xs text-on-surface-variant italic">No action items</div>
+      <div class="p-6 space-y-6">
+        <div>
+          <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Current Topics</h3>
+          <div data-bind="topics-list" class="grid grid-cols-1 gap-2">
+            <div class="text-xs text-on-surface-variant italic">No topics yet</div>
+          </div>
+        </div>
+        <div>
+          <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Confirmed Facts</h3>
+          <ul data-bind="facts-list" class="space-y-3">
+            <li class="text-xs text-on-surface-variant italic">No facts established</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-4">Action Items</h3>
+          <div data-bind="action-items-list" class="space-y-3">
+            <div class="text-xs text-on-surface-variant italic">No action items</div>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="mt-auto p-6 border-t border-outline-variant/10">
-      <div class="bg-surface-container-high rounded-xl p-4 flex flex-col gap-4">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold text-on-surface uppercase tracking-widest">Mediator Health</span>
-          <span class="material-symbols-outlined text-secondary text-lg">auto_awesome</span>
-        </div>
-        <div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
-          <div id="mediator-health-bar" class="h-full w-0 bg-gradient-to-r from-primary to-secondary transition-all duration-500"></div>
+      <div class="mt-auto p-6 border-t border-outline-variant/10">
+        <div class="bg-surface-container-high rounded-xl p-4 flex flex-col gap-4">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-on-surface uppercase tracking-widest">Mediator Health</span>
+            <span class="material-symbols-outlined text-secondary text-lg">auto_awesome</span>
+          </div>
+          <div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+            <div data-bind="mediator-health-bar" class="h-full w-0 bg-gradient-to-r from-primary to-secondary transition-all duration-500"></div>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+
+  </div>
 </main>
+
+<!-- Mobile: Mediator Bottom Sheet -->
+<div id="mediator-sheet-backdrop" onclick="closeMediatorSheet()" class="md:hidden fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm hidden"></div>
+<div id="mediator-sheet" class="md:hidden fixed inset-x-0 bottom-0 z-[61] max-h-[75vh] flex flex-col bg-surface-container-low border-t border-outline-variant/30 rounded-t-xl shadow-[0_-12px_40px_rgba(0,0,0,0.6)] translate-y-full">
+  <!-- Handle -->
+  <div class="pt-2 pb-1 flex justify-center shrink-0">
+    <div class="w-10 h-1 rounded-full bg-outline-variant"></div>
+  </div>
+  <!-- Header -->
+  <div class="px-5 py-3 flex items-center justify-between border-b border-outline-variant/10 shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-secondary text-[20px]">auto_awesome</span>
+      <h2 class="text-sm font-bold uppercase tracking-widest text-on-surface">Mediator</h2>
+    </div>
+    <button onclick="closeMediatorSheet()" aria-label="Close" class="p-1.5 rounded-full hover:bg-surface-bright active:scale-95 transition-all">
+      <span class="material-symbols-outlined text-[20px] text-on-surface-variant">close</span>
+    </button>
+  </div>
+  <!-- Unresolved banner (mobile) -->
+  <div data-bind="unresolved-banner" class="bg-tertiary-container/10 border-b border-tertiary-container/20 px-5 py-3 hidden shrink-0">
+    <div class="flex items-center gap-3 text-tertiary">
+      <span class="material-symbols-outlined text-[18px]">notification_important</span>
+      <span data-bind="unresolved-count" class="text-xs font-black uppercase tracking-tight">0 items remain</span>
+    </div>
+  </div>
+  <!-- Scrollable content -->
+  <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6 min-h-0">
+    <div>
+      <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-3">Current Topics</h3>
+      <div data-bind="topics-list" class="grid grid-cols-1 gap-2">
+        <div class="text-xs text-on-surface-variant italic">No topics yet</div>
+      </div>
+    </div>
+    <div>
+      <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-3">Confirmed Facts</h3>
+      <ul data-bind="facts-list" class="space-y-3">
+        <li class="text-xs text-on-surface-variant italic">No facts established</li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.2em] mb-3">Action Items</h3>
+      <div data-bind="action-items-list" class="space-y-3">
+        <div class="text-xs text-on-surface-variant italic">No action items</div>
+      </div>
+    </div>
+  </div>
+  <!-- Footer: Health -->
+  <div class="px-5 py-4 border-t border-outline-variant/10 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div class="bg-surface-container-high rounded-xl p-3 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-bold text-on-surface uppercase tracking-widest">Mediator Health</span>
+        <span class="material-symbols-outlined text-secondary text-[18px]">auto_awesome</span>
+      </div>
+      <div class="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
+        <div data-bind="mediator-health-bar" class="h-full w-0 bg-gradient-to-r from-primary to-secondary transition-all duration-500"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile: Overflow Menu -->
+<div id="overflow-backdrop" onclick="closeOverflowMenu()" class="md:hidden fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm hidden"></div>
+<div id="overflow-menu" class="md:hidden fixed inset-x-0 bottom-0 z-[71] bg-surface-container-low border-t border-outline-variant/30 rounded-t-xl shadow-[0_-12px_40px_rgba(0,0,0,0.6)] translate-y-full">
+  <div class="pt-2 pb-1 flex justify-center">
+    <div class="w-10 h-1 rounded-full bg-outline-variant"></div>
+  </div>
+  <div class="px-5 py-3 border-b border-outline-variant/10">
+    <div class="text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.2em] mb-2">Session</div>
+    <div class="flex items-center gap-2 bg-surface-container-high rounded-lg p-3">
+      <span id="overflow-session-id" class="flex-1 font-mono text-xs text-on-surface break-all">—</span>
+      <button onclick="copySessionId()" aria-label="Copy session ID" class="shrink-0 p-2 rounded-full hover:bg-surface-bright active:scale-95 transition-all">
+        <span class="material-symbols-outlined text-[18px] text-on-surface-variant">content_copy</span>
+      </button>
+    </div>
+  </div>
+  <button class="w-full px-5 py-4 flex items-center gap-4 hover:bg-surface-bright active:bg-surface-container-high transition-colors text-left" onclick="alert('Settings coming soon.')">
+    <span class="material-symbols-outlined text-on-surface-variant">settings</span>
+    <span class="text-sm text-on-surface">Settings</span>
+  </button>
+  <button class="w-full px-5 py-4 flex items-center gap-4 hover:bg-surface-bright active:bg-surface-container-high transition-colors text-left" onclick="alert('Help coming soon.')">
+    <span class="material-symbols-outlined text-on-surface-variant">help</span>
+    <span class="text-sm text-on-surface">Help</span>
+  </button>
+  <div class="px-5 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <button onclick="closeOverflowMenu()" class="w-full py-3 text-xs font-bold uppercase tracking-widest text-on-surface-variant border border-outline-variant/30 rounded-lg hover:bg-surface-bright active:scale-95 transition-all">
+      Close
+    </button>
+  </div>
+</div>
 
 <!-- Session Setup Modal -->
 <div id="session-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -415,9 +576,11 @@ async function updatePresence() {
     if (members.length >= 2) {
       statusEl.innerHTML = '<span class="w-2 h-2 bg-secondary rounded-full animate-pulse"></span><span class="text-secondary text-xs font-bold uppercase tracking-widest">Both connected</span>';
       statusEl.className = 'flex items-center gap-2 bg-secondary-container/30 px-3 py-1 rounded-full border border-secondary-container/50';
+      updateMobileStatus('both');
     } else {
       statusEl.innerHTML = '<span class="w-2 h-2 bg-tertiary rounded-full animate-pulse-glow"></span><span class="text-tertiary text-xs font-bold uppercase tracking-widest">Waiting for peer</span>';
       statusEl.className = 'flex items-center gap-2 bg-tertiary-container/10 px-3 py-1 rounded-full border border-tertiary-container/30';
+      updateMobileStatus('waiting');
     }
   } catch (e) {}
 }
@@ -427,19 +590,62 @@ function updateConnectionUI(status) {
   const el = document.getElementById('connection-status');
   el.innerHTML = '<span class="w-2 h-2 bg-error rounded-full"></span><span class="text-error text-xs font-bold uppercase tracking-widest">Disconnected</span>';
   el.className = 'flex items-center gap-2 bg-error-container/30 px-3 py-1 rounded-full border border-error-container/50';
+  updateMobileStatus('disconnected');
+}
+
+function updateMobileStatus(connState) {
+  const dot = document.querySelector('.mobile-status-dot');
+  const text = document.querySelector('.mobile-status-text');
+  if (!dot || !text) return;
+  const short = state.sessionId ? state.sessionId.slice(0, 8) : '';
+  if (connState === 'both') {
+    dot.className = 'mobile-status-dot w-1.5 h-1.5 rounded-full bg-secondary shrink-0';
+    text.textContent = short || 'CONNECTED';
+    text.className = 'mobile-status-text text-[10px] font-bold uppercase tracking-widest text-on-surface truncate' + (short ? ' font-mono' : '');
+  } else if (connState === 'waiting') {
+    dot.className = 'mobile-status-dot w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse-glow shrink-0';
+    text.textContent = 'Waiting';
+    text.className = 'mobile-status-text text-[10px] font-bold uppercase tracking-widest text-tertiary truncate';
+  } else if (connState === 'disconnected') {
+    dot.className = 'mobile-status-dot w-1.5 h-1.5 rounded-full bg-error shrink-0';
+    text.textContent = 'Offline';
+    text.className = 'mobile-status-text text-[10px] font-bold uppercase tracking-widest text-error truncate';
+  } else {
+    dot.className = 'mobile-status-dot w-1.5 h-1.5 rounded-full bg-on-surface-variant shrink-0';
+    text.textContent = 'Offline';
+    text.className = 'mobile-status-text text-[10px] font-bold uppercase tracking-widest text-on-surface-variant truncate';
+  }
 }
 
 // ========== AGENT THREAD ==========
 function handleAgentInput(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    const input = document.getElementById('agent-input');
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    addAgentMessage('user', text);
-    processUserMessage(text);
+    submitAgentInput();
   }
+}
+
+function submitAgentInput() {
+  const input = document.getElementById('agent-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  autoGrowInput(input);
+  toggleSendButton();
+  addAgentMessage('user', text);
+  processUserMessage(text);
+}
+
+function autoGrowInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function toggleSendButton() {
+  const input = document.getElementById('agent-input');
+  const btn = document.getElementById('agent-send-btn');
+  if (!input || !btn) return;
+  btn.disabled = !input.value.trim();
 }
 
 function addAgentMessage(role, text) {
@@ -517,10 +723,12 @@ async function processUserMessage(text) {
 function showPolishProposal(polished) {
   document.getElementById('polish-text').textContent = '"' + polished + '"';
   document.getElementById('polish-proposal').classList.remove('hidden');
+  document.getElementById('col-agent').classList.add('polish-active');
 }
 
 function hidePolishProposal() {
   document.getElementById('polish-proposal').classList.add('hidden');
+  document.getElementById('col-agent').classList.remove('polish-active');
 }
 
 async function sendPolished() {
@@ -576,59 +784,178 @@ function renderMainThread() {
     const icon = processed
       ? '<span class="material-symbols-outlined text-[10px] align-middle ml-1 text-secondary cursor-help" title="Mediator processed">check_circle</span>'
       : '<span class="material-symbols-outlined text-[10px] align-middle ml-1 text-on-surface-variant cursor-help" title="Awaiting mediator">schedule</span>';
-    const origBtn = msg.sentAsRaw ? '' : '<button onclick="toggleOriginal(this)" data-raw="' + escapeAttr(msg.rawContent) + '" class="mt-3 text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">Show Original</button>';
-    return '<div class="group"><div class="flex justify-between items-baseline mb-3"><span class="text-xs font-black text-on-surface tracking-widest">' + escapeHtml(label) + '</span><span class="text-[10px] text-on-surface-variant font-mono flex items-center">' + time + ' ' + icon + '</span></div><div class="text-sm leading-relaxed text-on-surface-variant ' + borderColor + ' border-l pl-4 py-1">' + escapeHtml(msg.polishedContent) + '</div>' + origBtn + '</div>';
+    const hasRaw = !msg.sentAsRaw;
+    const bodyAttrs = hasRaw ? ' role="button" tabindex="0" data-raw="' + escapeAttr(msg.rawContent) + '" onclick="toggleOriginal(this)"' : '';
+    const bodyClass = 'text-sm leading-relaxed text-on-surface-variant ' + borderColor + ' border-l pl-4 py-1' + (hasRaw ? ' cursor-pointer md:cursor-default select-text md:select-auto' : '');
+    const origBtn = hasRaw ? '<button onclick="toggleOriginal(this)" data-raw="' + escapeAttr(msg.rawContent) + '" data-show-original class="mt-3 text-[10px] font-bold text-primary opacity-0 md:group-hover:opacity-100 transition-opacity uppercase tracking-widest hidden md:inline-block">Show Original</button>' : '';
+    return '<div class="group"><div class="flex justify-between items-baseline mb-2 md:mb-3"><span class="text-xs font-black text-on-surface tracking-widest">' + escapeHtml(label) + '</span><span class="text-[10px] text-on-surface-variant font-mono flex items-center">' + time + ' ' + icon + '</span></div><div class="' + bodyClass + '"' + bodyAttrs + '>' + escapeHtml(msg.polishedContent) + '</div>' + origBtn + '</div>';
   }).join('');
   container.scrollTop = container.scrollHeight;
 }
 
-function toggleOriginal(btn) {
-  const existing = btn.parentElement.querySelector('.original-content');
-  if (existing) { existing.remove(); btn.textContent = 'Show Original'; return; }
+function toggleOriginal(trigger) {
+  const msg = trigger.closest('.group');
+  if (!msg) return;
+  const raw = trigger.dataset.raw;
+  if (!raw) return;
+  const existing = msg.querySelector('.original-content');
+  const btn = msg.querySelector('[data-show-original]');
+  if (existing) {
+    existing.remove();
+    if (btn) btn.textContent = 'Show Original';
+    return;
+  }
   const div = document.createElement('div');
   div.className = 'original-content mt-2 text-xs text-on-surface-variant/60 italic border-l border-outline-variant/20 pl-4 py-1';
-  div.textContent = btn.dataset.raw;
-  btn.after(div);
-  btn.textContent = 'Hide Original';
+  div.textContent = raw;
+  // Insert after the polished body (or after the button on desktop)
+  const body = msg.querySelector('[data-raw]:not(button)');
+  (body || btn).after(div);
+  if (btn) btn.textContent = 'Hide Original';
 }
 
 // ========== MEDIATOR STATE ==========
+function setAllHTML(selector, html) {
+  document.querySelectorAll(selector).forEach(el => { el.innerHTML = html; });
+}
+function setAllText(selector, text) {
+  document.querySelectorAll(selector).forEach(el => { el.textContent = text; });
+}
+function toggleAllHidden(selector, hidden) {
+  document.querySelectorAll(selector).forEach(el => {
+    if (hidden) el.classList.add('hidden');
+    else el.classList.remove('hidden');
+  });
+}
+
 function renderMediatorState() {
   const { topics, facts, actionItems } = state.mediator;
-  const openCount = topics.filter(t => t.status === 'open').length + actionItems.filter(a => a.status === 'open').length;
-  const banner = document.getElementById('unresolved-banner');
-  if (openCount > 0) {
-    banner.classList.remove('hidden');
-    document.getElementById('unresolved-count').textContent = openCount + ' item' + (openCount !== 1 ? 's' : '') + ' remain';
-  } else {
-    banner.classList.add('hidden');
+  const openTopics = topics.filter(t => t.status === 'open').length;
+  const openActions = actionItems.filter(a => a.status === 'open').length;
+  const openCount = openTopics + openActions;
+
+  // Unresolved banner (desktop sidebar + mobile sheet)
+  toggleAllHidden('[data-bind="unresolved-banner"]', openCount === 0);
+  setAllText('[data-bind="unresolved-count"]', openCount + ' item' + (openCount !== 1 ? 's' : '') + ' remain');
+
+  // Slit counts (mobile) — topics shows open count if any, else total; facts always total; actions open if any, else total
+  setAllText('[data-bind="slit-topics-count"]', String(openTopics || topics.length));
+  setAllText('[data-bind="slit-facts-count"]', String(facts.length));
+  setAllText('[data-bind="slit-actions-count"]', String(openActions || actionItems.length));
+
+  // Slit urgency state
+  const slit = document.getElementById('mediator-slit');
+  if (slit) {
+    const urgentLine = slit.querySelector('.slit-urgent-line');
+    const chev = slit.querySelector('.slit-chevron');
+    if (openCount > 0) {
+      slit.classList.add('bg-tertiary-container/10');
+      slit.classList.remove('bg-surface-container');
+      if (urgentLine) urgentLine.classList.remove('hidden');
+      if (chev) { chev.classList.add('text-tertiary', 'animate-pulse-glow'); chev.classList.remove('text-on-surface-variant'); }
+      slit.querySelectorAll('[data-slit="topics"] .slit-icon, [data-slit="topics"] .slit-count, [data-slit="actions"] .slit-icon, [data-slit="actions"] .slit-count').forEach(el => {
+        el.classList.add('text-tertiary');
+        el.classList.remove('text-on-surface-variant', 'text-on-surface');
+      });
+    } else {
+      slit.classList.remove('bg-tertiary-container/10');
+      slit.classList.add('bg-surface-container');
+      if (urgentLine) urgentLine.classList.add('hidden');
+      if (chev) { chev.classList.remove('text-tertiary', 'animate-pulse-glow'); chev.classList.add('text-on-surface-variant'); }
+      slit.querySelectorAll('[data-slit] .slit-icon').forEach(el => {
+        el.classList.remove('text-tertiary');
+        el.classList.add('text-on-surface-variant');
+      });
+      slit.querySelectorAll('[data-slit] .slit-count').forEach(el => {
+        el.classList.remove('text-tertiary');
+        el.classList.add('text-on-surface');
+      });
+    }
   }
 
-  const topicsList = document.getElementById('topics-list');
-  topicsList.innerHTML = topics.length === 0
+  // Topics
+  setAllHTML('[data-bind="topics-list"]', topics.length === 0
     ? '<div class="text-xs text-on-surface-variant italic">No topics yet</div>'
     : topics.map(t => {
         const badge = t.status === 'open' ? 'bg-primary-container text-on-primary-container' : t.status === 'resolved' ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-highest text-on-surface-variant';
         const label = t.status.charAt(0).toUpperCase() + t.status.slice(1);
-        return '<div class="flex items-center justify-between p-3 rounded bg-surface-container-low hover:bg-surface-container-high transition-colors"><span class="text-xs font-medium text-on-surface">' + escapeHtml(t.title) + '</span><span class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ' + badge + '">' + label + '</span></div>';
-      }).join('');
+        return '<div class="flex items-center justify-between gap-2 p-3 rounded bg-surface-container-low hover:bg-surface-container-high transition-colors"><span class="text-xs font-medium text-on-surface flex-1">' + escapeHtml(t.title) + '</span><span class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ' + badge + '">' + label + '</span></div>';
+      }).join(''));
 
-  const factsList = document.getElementById('facts-list');
-  factsList.innerHTML = facts.length === 0
+  // Facts
+  setAllHTML('[data-bind="facts-list"]', facts.length === 0
     ? '<li class="text-xs text-on-surface-variant italic">No facts established</li>'
-    : facts.map(f => '<li class="flex items-start gap-3"><span class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0"></span><span class="text-xs leading-relaxed text-on-surface-variant">' + escapeHtml(f.content) + '</span></li>').join('');
+    : facts.map(f => '<li class="flex items-start gap-3"><span class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0"></span><span class="text-xs leading-relaxed text-on-surface-variant">' + escapeHtml(f.content) + '</span></li>').join(''));
 
-  const actionList = document.getElementById('action-items-list');
-  actionList.innerHTML = actionItems.length === 0
+  // Action items
+  setAllHTML('[data-bind="action-items-list"]', actionItems.length === 0
     ? '<div class="text-xs text-on-surface-variant italic">No action items</div>'
     : actionItems.map(a => {
         const done = a.status === 'completed';
         return '<label class="flex items-center gap-3 cursor-pointer group"><div class="w-4 h-4 border border-outline-variant rounded bg-surface-container flex items-center justify-center group-hover:border-primary transition-colors ' + (done ? 'bg-secondary-container' : '') + '">' + (done ? '<span class="material-symbols-outlined text-secondary text-xs">check</span>' : '') + '</div><span class="text-xs text-on-surface-variant group-hover:text-on-surface ' + (done ? 'line-through' : '') + '">' + escapeHtml(a.content) + ' <span class="text-[10px] text-primary/60 font-mono">(' + escapeHtml(a.assignedTo) + ')</span></span></label>';
-      }).join('');
+      }).join(''));
 
+  // Health bar
   const total = topics.length || 1;
   const resolved = topics.filter(t => t.status !== 'open').length;
-  document.getElementById('mediator-health-bar').style.width = Math.round((resolved / total) * 100) + '%';
+  const pct = Math.round((resolved / total) * 100) + '%';
+  document.querySelectorAll('[data-bind="mediator-health-bar"]').forEach(el => { el.style.width = pct; });
+}
+
+// ========== MOBILE: SHEETS ==========
+function openMediatorSheet() {
+  const sheet = document.getElementById('mediator-sheet');
+  const backdrop = document.getElementById('mediator-sheet-backdrop');
+  if (!sheet || !backdrop) return;
+  backdrop.classList.remove('hidden');
+  backdrop.classList.remove('backdrop-exit');
+  backdrop.classList.add('backdrop-enter');
+  sheet.classList.remove('translate-y-full', 'sheet-exit');
+  sheet.classList.add('sheet-enter');
+  const chev = document.querySelector('#mediator-slit .slit-chevron');
+  if (chev) chev.style.transform = 'rotate(180deg)';
+}
+
+function closeMediatorSheet() {
+  const sheet = document.getElementById('mediator-sheet');
+  const backdrop = document.getElementById('mediator-sheet-backdrop');
+  if (!sheet || !backdrop) return;
+  sheet.classList.remove('sheet-enter');
+  sheet.classList.add('sheet-exit');
+  backdrop.classList.remove('backdrop-enter');
+  backdrop.classList.add('backdrop-exit');
+  setTimeout(() => {
+    sheet.classList.add('translate-y-full');
+    backdrop.classList.add('hidden');
+  }, 220);
+  const chev = document.querySelector('#mediator-slit .slit-chevron');
+  if (chev) chev.style.transform = '';
+}
+
+function openOverflowMenu() {
+  const menu = document.getElementById('overflow-menu');
+  const backdrop = document.getElementById('overflow-backdrop');
+  if (!menu || !backdrop) return;
+  const sid = document.getElementById('overflow-session-id');
+  if (sid) sid.textContent = state.sessionId || '—';
+  backdrop.classList.remove('hidden', 'backdrop-exit');
+  backdrop.classList.add('backdrop-enter');
+  menu.classList.remove('translate-y-full', 'sheet-exit');
+  menu.classList.add('sheet-enter');
+}
+
+function closeOverflowMenu() {
+  const menu = document.getElementById('overflow-menu');
+  const backdrop = document.getElementById('overflow-backdrop');
+  if (!menu || !backdrop) return;
+  menu.classList.remove('sheet-enter');
+  menu.classList.add('sheet-exit');
+  backdrop.classList.remove('backdrop-enter');
+  backdrop.classList.add('backdrop-exit');
+  setTimeout(() => {
+    menu.classList.add('translate-y-full');
+    backdrop.classList.add('hidden');
+  }, 220);
 }
 
 // ========== TAB SWITCHING ==========
@@ -656,6 +983,18 @@ setInterval(async () => {
     if (res.ok) { state.mediator = await res.json(); renderMediatorState(); }
   } catch {}
 }, 10000);
+
+// Close sheets on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const med = document.getElementById('mediator-sheet');
+  const ofm = document.getElementById('overflow-menu');
+  if (med && !med.classList.contains('translate-y-full')) { closeMediatorSheet(); return; }
+  if (ofm && !ofm.classList.contains('translate-y-full')) { closeOverflowMenu(); return; }
+});
+
+// Initial mediator render so slit populates with zeroes from the start
+renderMediatorState();
 </script>
 </body>
 </html>
