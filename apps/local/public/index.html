@@ -84,6 +84,10 @@
     <span id="session-id-display" class="text-on-surface-variant text-xs font-mono">No Session</span>
   </div>
   <div class="flex items-center gap-4">
+    <div id="user-badge" class="hidden items-center gap-2 px-3 py-1 rounded-full border">
+      <span class="material-symbols-outlined text-sm">person</span>
+      <span class="text-xs font-bold uppercase tracking-widest">You: <span id="user-badge-label"></span></span>
+    </div>
     <div id="connection-status" class="flex items-center gap-2 bg-surface-container-high/30 px-3 py-1 rounded-full border border-outline-variant/30">
       <span class="w-2 h-2 bg-on-surface-variant rounded-full"></span>
       <span class="text-on-surface-variant text-xs font-bold uppercase tracking-widest">Offline</span>
@@ -239,7 +243,7 @@ const state = {
 // ========== SESSION MANAGEMENT ==========
 function saveIdentity() {
   if (state.sessionId && state.participantId) {
-    localStorage.setItem('parley:' + state.sessionId, JSON.stringify({
+    sessionStorage.setItem('parley:' + state.sessionId, JSON.stringify({
       participantId: state.participantId,
       userLabel: state.userLabel,
     }));
@@ -248,7 +252,7 @@ function saveIdentity() {
 
 function loadIdentity(sessionId) {
   try {
-    const raw = localStorage.getItem('parley:' + sessionId);
+    const raw = sessionStorage.getItem('parley:' + sessionId);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
@@ -339,6 +343,16 @@ function showSession() {
   document.getElementById('session-modal').classList.add('hidden');
   const display = document.getElementById('session-id-display');
   display.innerHTML = '<span class="cursor-pointer select-all" title="Click to copy" onclick="copySessionId()">' + state.sessionId + '</span><span class="material-symbols-outlined text-sm ml-2 cursor-pointer hover:text-primary transition-colors" onclick="copySessionId()">content_copy</span>';
+
+  // Show user badge with role-based color
+  const badge = document.getElementById('user-badge');
+  const badgeLabel = document.getElementById('user-badge-label');
+  badgeLabel.textContent = state.userLabel || '';
+  const isUserA = state.userLabel === 'User A';
+  badge.className = 'flex items-center gap-2 px-3 py-1 rounded-full border ' + (isUserA
+    ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+    : 'bg-amber-500/15 border-amber-500/40 text-amber-300');
+
   // Update URL to include session ID for easy sharing
   history.replaceState(null, '', '/' + state.sessionId);
   addAgentMessage('agent', 'Welcome! You are ' + state.userLabel + '. I\'m your personal Parley agent — your advocate in this conversation.\n\nTell me what you want to communicate. I\'ll help you craft the right message — understanding your intent, clarifying tone, and making sure you come across the way you want.\n\nTip: Start with /raw to bypass me and send directly.');
