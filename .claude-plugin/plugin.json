@@ -1,0 +1,8 @@
+{
+  "name": "parley",
+  "version": "0.1.0",
+  "description": "Parley — Claude Code channel messaging over Ably.",
+  "author": { "name": "Zabaca" },
+  "keywords": ["messaging", "channel", "mcp", "ably", "multi-session"],
+  "skills": "./external_plugins/parley/.claude/skills/"
+}
