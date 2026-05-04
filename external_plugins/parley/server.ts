@@ -25,9 +25,17 @@ function getIdentity(): string {
   return process.env.SESSION_ID ?? hostname().split('.')[0]
 }
 
-const ABLY_API_KEY = process.env.ABLY_API_KEY!
-const ABLY_CONTROL_KEY = process.env.ABLY_CONTROL_KEY!
-const APP_ID = ABLY_API_KEY.split('.')[0]
+function getAblyApiKey(): string {
+  const key = process.env.ABLY_API_KEY
+  if (!key) throw new Error('ABLY_API_KEY not set. Required for creating/inviting channels.')
+  return key
+}
+function getAblyControlKey(): string {
+  const key = process.env.ABLY_CONTROL_KEY
+  if (!key) throw new Error('ABLY_CONTROL_KEY not set. Required for creating/revoking keys.')
+  return key
+}
+function getAppId(): string { return getAblyApiKey().split('.')[0] }
 
 type Invite = { keyId: string; label: string; createdAt: string }
 type Membership = { name: string; key: string; joinedAt: string; invites: Invite[] }
@@ -89,10 +97,10 @@ function unsubscribeChannel(name: string) {
 }
 
 async function controlCreateKey(channelName: string, label: string): Promise<{ keyId: string; fullKey: string }> {
-  const res = await fetch(`https://control.ably.net/v1/apps/${APP_ID}/keys`, {
+  const res = await fetch(`https://control.ably.net/v1/apps/${getAppId()}/keys`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${ABLY_CONTROL_KEY}`,
+      'Authorization': `Bearer ${getAblyControlKey()}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -106,9 +114,9 @@ async function controlCreateKey(channelName: string, label: string): Promise<{ k
 }
 
 async function controlRevokeKey(keyId: string) {
-  const res = await fetch(`https://control.ably.net/v1/apps/${APP_ID}/keys/${keyId}/revoke`, {
+  const res = await fetch(`https://control.ably.net/v1/apps/${getAppId()}/keys/${keyId}/revoke`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${ABLY_CONTROL_KEY}` },
+    headers: { 'Authorization': `Bearer ${getAblyControlKey()}` },
   })
   if (!res.ok) throw new Error(`Revoke error ${res.status}: ${await res.text()}`)
 }
