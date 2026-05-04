@@ -1,0 +1,6 @@
+{
+  "name": "parley",
+  "description": "Claude Code channel messaging over Ably. Send messages between Claude Code sessions on any machine.",
+  "version": "0.1.0",
+  "keywords": ["messaging", "channel", "mcp", "ably", "multi-session"]
+}
