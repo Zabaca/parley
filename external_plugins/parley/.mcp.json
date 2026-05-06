@@ -2,12 +2,7 @@
   "mcpServers": {
     "parley": {
       "command": "bun",
-      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "server.ts"],
-      "env": {
-        "ABLY_API_KEY": "${ABLY_API_KEY}",
-        "ABLY_CONTROL_KEY": "${ABLY_CONTROL_KEY}",
-        "PWD": "${PWD}"
-      }
+      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "server.ts"]
     }
   }
 }

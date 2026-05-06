@@ -318,17 +318,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     }))
     const localSubscriptions = [...localWatchers.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
     const annotated = memberships.map(m => ({ ...m, active: m.cwd === PROJECT_ROOT, orphan: m.cwd === undefined }))
-    const apiKey = process.env.ABLY_API_KEY ?? ''
-    const ctrlKey = process.env.ABLY_CONTROL_KEY ?? ''
-    const ablyEnv = {
-      api_present: !!apiKey,
-      api_prefix: apiKey.slice(0, 12),
-      api_len: apiKey.length,
-      ctrl_present: !!ctrlKey,
-      ctrl_prefix: ctrlKey.slice(0, 30),
-      ctrl_len: ctrlKey.length,
-    }
-    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, ablyEnv, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
+    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
   }
 
   if (name === 'start_channel') {

@@ -8,7 +8,7 @@
     {
       "name": "parley",
       "description": "Send messages between Claude Code sessions on any machine. Named channels, invite keys, cross-machine via Ably.",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "source": "./external_plugins/parley"
     }
   ]

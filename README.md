@@ -15,7 +15,7 @@ Parley is a Claude Code channel plugin. It uses Ably pub/sub to deliver messages
 ```bash
 /plugin marketplace add zabaca/parley
 /plugin install parley@parley
-source .env && claude --dangerously-load-development-channels plugin:parley@parley
+claude --dangerously-load-development-channels plugin:parley@parley
 ```
 
 > `--dangerously-load-development-channels` is required during the channels research preview.
@@ -24,9 +24,8 @@ source .env && claude --dangerously-load-development-channels plugin:parley@parl
 
 ```bash
 cd external_plugins/parley
-cp .env.example .env   # fill in credentials
 bun install
-source .env && claude --dangerously-load-development-channels server:parley
+claude --dangerously-load-development-channels server:parley
 ```
 
 ## Ably credentials
@@ -34,6 +33,19 @@ source .env && claude --dangerously-load-development-channels server:parley
 1. [ably.com](https://ably.com) — create free account and app
 2. **`ABLY_API_KEY`** — root API key from app settings
 3. **`ABLY_CONTROL_KEY`** — account access token from [ably.com/users/access_tokens](https://ably.com/users/access_tokens) with **Read App + Write Key** capabilities
+
+Add them to your Claude Code settings — `~/.claude/settings.json` (all projects) or `.claude/settings.json` (one project):
+
+```json
+{
+  "env": {
+    "ABLY_API_KEY": "...",
+    "ABLY_CONTROL_KEY": "..."
+  }
+}
+```
+
+Local channels (`/local-channel`) don't need either key.
 
 ## First use
 
