@@ -31,7 +31,7 @@ claude --dangerously-load-development-channels server:parley
 ## Ably credentials
 
 1. [ably.com](https://ably.com) — create free account and app
-2. **`ABLY_API_KEY`** — root API key from app settings
+2. **`ABLY_APP_ID`** — app id from app settings (the short prefix, e.g. `UHcyWA`)
 3. **`ABLY_CONTROL_KEY`** — account access token from [ably.com/users/access_tokens](https://ably.com/users/access_tokens) with **Read App + Write Key** capabilities
 
 Add them to your Claude Code settings — `~/.claude/settings.json` (all projects) or `.claude/settings.json` (one project):
@@ -39,13 +39,13 @@ Add them to your Claude Code settings — `~/.claude/settings.json` (all project
 ```json
 {
   "env": {
-    "ABLY_API_KEY": "...",
+    "ABLY_APP_ID": "...",
     "ABLY_CONTROL_KEY": "..."
   }
 }
 ```
 
-Local channels (`/local-channel`) don't need either key.
+Local channels (`/local-channel`) don't need either.
 
 ## First use
 

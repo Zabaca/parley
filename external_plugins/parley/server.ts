@@ -40,17 +40,16 @@ function getIdentity(): string {
   return process.env.SESSION_ID ?? hostname().split('.')[0]
 }
 
-function getAblyApiKey(): string {
-  const key = process.env.ABLY_API_KEY
-  if (!key) throw new Error('ABLY_API_KEY not set. Required for creating/inviting channels.')
-  return key
-}
 function getAblyControlKey(): string {
   const key = process.env.ABLY_CONTROL_KEY
   if (!key) throw new Error('ABLY_CONTROL_KEY not set. Required for creating/revoking keys.')
   return key
 }
-function getAppId(): string { return getAblyApiKey().split('.')[0] }
+function getAppId(): string {
+  const id = process.env.ABLY_APP_ID
+  if (!id) throw new Error('ABLY_APP_ID not set. Required for creating/inviting channels.')
+  return id
+}
 
 type Invite = { keyId: string; label: string; createdAt: string }
 type Membership = {
