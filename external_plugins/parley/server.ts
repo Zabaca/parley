@@ -3,13 +3,16 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import * as Ably from 'ably'
 import { randomUUID } from 'crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import * as fs from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir, hostname } from 'os'
 import { join } from 'path'
 
 const SESSION_UUID = randomUUID()
 
 const PARLEY_DIR = join(homedir(), '.claude', 'parley')
+const LOCAL_DIR = join(PARLEY_DIR, 'local')
+const LOCAL_GC_AGE_MS = 60 * 60 * 1000
 const LOG_FILE = join(homedir(), '.claude', 'parley', 'parley.log')
 function log(msg: string) {
   mkdirSync(PARLEY_DIR, { recursive: true })
@@ -38,11 +41,26 @@ function getAblyControlKey(): string {
 function getAppId(): string { return getAblyApiKey().split('.')[0] }
 
 type Invite = { keyId: string; label: string; createdAt: string }
-type Membership = { name: string; key: string; joinedAt: string; invites: Invite[] }
+type Membership = {
+  name: string
+  kind: 'ably' | 'local'
+  key: string
+  joinedAt: string
+  invites: Invite[]
+}
 
 function loadMemberships(): Membership[] {
   if (!existsSync(MEMBERSHIPS_FILE)) return []
-  try { return JSON.parse(readFileSync(MEMBERSHIPS_FILE, 'utf-8')) } catch { return [] }
+  try {
+    const raw = JSON.parse(readFileSync(MEMBERSHIPS_FILE, 'utf-8')) as Partial<Membership>[]
+    return raw.map(m => ({
+      name: m.name!,
+      kind: m.kind ?? 'ably',
+      key: m.key ?? '',
+      joinedAt: m.joinedAt ?? new Date().toISOString(),
+      invites: m.invites ?? [],
+    }))
+  } catch { return [] }
 }
 
 function saveMemberships(m: Membership[]) {
@@ -51,6 +69,86 @@ function saveMemberships(m: Membership[]) {
 }
 
 const channelClients = new Map<string, Ably.Realtime>()
+const localWatchers = new Map<string, fs.FSWatcher>()
+const localSubscribeTimes = new Map<string, number>()
+
+function localChannelDir(name: string): string {
+  return join(LOCAL_DIR, name)
+}
+
+function gcLocalChannel(name: string) {
+  const dir = localChannelDir(name)
+  if (!existsSync(dir)) return
+  const cutoff = Date.now() - LOCAL_GC_AGE_MS
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f)
+    try {
+      if (statSync(p).mtimeMs < cutoff) unlinkSync(p)
+    } catch {}
+  }
+}
+
+async function subscribeLocalChannel(name: string) {
+  if (localWatchers.has(name)) return
+  const dir = localChannelDir(name)
+  mkdirSync(dir, { recursive: true })
+  const subscribeTime = Date.now()
+  localSubscribeTimes.set(name, subscribeTime)
+  gcLocalChannel(name)
+  log(`[parley] subscribing to local:${name} dir=${dir}\n`)
+  const seen = new Set<string>()
+  const watcher = fs.watch(dir, async (event: string, filename: string | null) => {
+    if (!filename) return
+    if (event !== 'rename') return
+    if (filename.endsWith('.tmp')) return
+    if (filename.includes(SESSION_UUID)) return
+    if (seen.has(filename)) return
+    const full = join(dir, filename)
+    let st: fs.Stats
+    try { st = statSync(full) } catch { return }
+    if (st.mtimeMs < subscribeTime) return
+    seen.add(filename)
+    let data: { id: string; from: string; text: string; channel: string; sessionId: string }
+    try {
+      data = JSON.parse(readFileSync(full, 'utf-8'))
+    } catch (e) {
+      log(`[parley] local read ERROR ${filename}: ${e}\n`)
+      return
+    }
+    if (data.sessionId === SESSION_UUID) return
+    log(`[parley] received local message on ${name} from=${data.from} text=${data.text}\n`)
+    try {
+      await server.notification({
+        method: 'notifications/claude/channel',
+        params: { content: data.text, meta: { from: data.from, channel: name, id: data.id } },
+      })
+      log(`[parley] notification sent ok\n`)
+    } catch (e) {
+      log(`[parley] notification ERROR: ${e}\n`)
+    }
+    gcLocalChannel(name)
+  })
+  localWatchers.set(name, watcher)
+}
+
+function unsubscribeLocalChannel(name: string) {
+  const w = localWatchers.get(name)
+  if (!w) return
+  w.close()
+  localWatchers.delete(name)
+  localSubscribeTimes.delete(name)
+}
+
+function publishLocal(name: string, payload: { id: string; from: string; text: string; channel: string; sessionId: string }) {
+  const dir = localChannelDir(name)
+  mkdirSync(dir, { recursive: true })
+  const base = `${Date.now()}-${SESSION_UUID}-${payload.id}.json`
+  const tmp = join(dir, `${base}.tmp`)
+  const final = join(dir, base)
+  writeFileSync(tmp, JSON.stringify(payload))
+  renameSync(tmp, final)
+  gcLocalChannel(name)
+}
 
 const server = new Server(
   { name: 'parley', version: '0.1.0' },
@@ -59,7 +157,7 @@ const server = new Server(
       experimental: { 'claude/channel': {} },
       tools: {},
     },
-    instructions: `You are "${getIdentity()}" on Parley. Channels: ${loadMemberships().map(m => m.name).join(', ') || 'none'}. Tools: start_channel, invite_channel, join_channel, leave_channel, revoke_invite, send, debug.`,
+    instructions: `You are "${getIdentity()}" on Parley. Channels: ${loadMemberships().map(m => m.name).join(', ') || 'none'}. Tools: start_channel, local_channel, invite_channel, join_channel, leave_channel, revoke_invite, send, debug.`,
   }
 )
 
@@ -134,6 +232,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
     },
     {
+      name: 'local_channel',
+      description: 'Create or join a same-machine channel by name. No Ably required.',
+      inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    },
+    {
       name: 'invite_channel',
       description: 'Mint an invite key for a channel. Returns a join key string to share.',
       inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
@@ -194,11 +297,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === 'debug') {
     const channels = [...channelClients.entries()].map(([ch, client]) => ({
       channel: ch,
+      kind: 'ably',
       connectionState: client.connection.state,
       channelState: client.channels.get(`parley:${ch}`).state,
       clientId: client.auth.clientId,
     }))
-    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), activeSubscriptions: channels, memberships }, null, 2) }] }
+    const localSubscriptions = [...localWatchers.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
+    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), activeSubscriptions: channels, localSubscriptions, memberships }, null, 2) }] }
   }
 
   if (name === 'start_channel') {
@@ -207,16 +312,27 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       return { content: [{ type: 'text', text: `Already in "${channelName}".` }] }
     const label = `parley-${channelName}-creator`
     const { keyId, fullKey } = await controlCreateKey(channelName, label)
-    memberships.push({ name: channelName, key: fullKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label, createdAt: new Date().toISOString() }] })
+    memberships.push({ name: channelName, kind: 'ably', key: fullKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label, createdAt: new Date().toISOString() }] })
     saveMemberships(memberships)
     await subscribeChannel(channelName, fullKey)
     return { content: [{ type: 'text', text: `Created and joined "${channelName}".` }] }
+  }
+
+  if (name === 'local_channel') {
+    const { name: channelName } = args as { name: string }
+    if (memberships.find(m => m.name === channelName))
+      return { content: [{ type: 'text', text: `Already in "${channelName}".` }] }
+    memberships.push({ name: channelName, kind: 'local', key: '', joinedAt: new Date().toISOString(), invites: [] })
+    saveMemberships(memberships)
+    await subscribeLocalChannel(channelName)
+    return { content: [{ type: 'text', text: `Joined local channel "${channelName}". Any Claude Code session on this machine that runs /local-channel ${channelName} will share it.` }] }
   }
 
   if (name === 'invite_channel') {
     const { name: channelName } = args as { name: string }
     const membership = memberships.find(m => m.name === channelName)
     if (!membership) return { content: [{ type: 'text', text: `Not in "${channelName}".` }] }
+    if (membership.kind === 'local') return { content: [{ type: 'text', text: `Local channels don't use invite keys.` }] }
     const label = `parley-${channelName}-invite-${membership.invites.length + 1}`
     const { keyId, fullKey } = await controlCreateKey(channelName, label)
     membership.invites.push({ keyId, label, createdAt: new Date().toISOString() })
@@ -232,7 +348,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (memberships.find(m => m.name === channelName))
       return { content: [{ type: 'text', text: `Already in "${channelName}". Channel active.` }] }
     const keyId = ablyKey.split(':')[0]
-    memberships.push({ name: channelName, key: ablyKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label: 'join-key', createdAt: new Date().toISOString() }] })
+    memberships.push({ name: channelName, kind: 'ably', key: ablyKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label: 'join-key', createdAt: new Date().toISOString() }] })
     saveMemberships(memberships)
     await subscribeChannel(channelName, ablyKey)
     return { content: [{ type: 'text', text: `Joined "${channelName}".` }] }
@@ -240,7 +356,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === 'leave_channel') {
     const { name: channelName } = args as { name: string }
-    unsubscribeChannel(channelName)
+    const membership = memberships.find(m => m.name === channelName)
+    if (membership?.kind === 'local') unsubscribeLocalChannel(channelName)
+    else unsubscribeChannel(channelName)
     saveMemberships(memberships.filter(m => m.name !== channelName))
     return { content: [{ type: 'text', text: `Left "${channelName}".` }] }
   }
@@ -249,6 +367,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name: channelName, key_id } = args as { name: string; key_id: string }
     const membership = memberships.find(m => m.name === channelName)
     if (!membership) return { content: [{ type: 'text', text: `Not in "${channelName}".` }] }
+    if (membership.kind === 'local') return { content: [{ type: 'text', text: `Local channels don't use invite keys.` }] }
     await controlRevokeKey(key_id)
     membership.invites = membership.invites.filter(i => i.keyId !== key_id)
     saveMemberships(memberships)
@@ -257,12 +376,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === 'send') {
     const { channel, text } = args as { channel: string; text: string }
+    const membership = memberships.find(m => m.name === channel)
+    if (!membership) return { content: [{ type: 'text', text: `Not in "${channel}". Join first.` }] }
+    const payload = { id: randomUUID(), from: getIdentity(), text, channel, sessionId: SESSION_UUID }
+    if (membership.kind === 'local') {
+      log(`[parley] publishing to local:${channel} from=${getIdentity()}\n`)
+      publishLocal(channel, payload)
+      return { content: [{ type: 'text', text: `Sent to "${channel}".` }] }
+    }
     const client = channelClients.get(channel)
     if (!client) return { content: [{ type: 'text', text: `Not in "${channel}". Join first.` }] }
     log(`[parley] publishing to parley:${channel} from=${getIdentity()}\n`)
-    await client.channels.get(`parley:${channel}`).publish('message', {
-      id: randomUUID(), from: getIdentity(), text, channel, sessionId: SESSION_UUID,
-    })
+    await client.channels.get(`parley:${channel}`).publish('message', payload)
     return { content: [{ type: 'text', text: `Sent to "${channel}".` }] }
   }
 
@@ -272,5 +397,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 await server.connect(new StdioServerTransport())
 
 for (const m of loadMemberships()) {
-  await subscribeChannel(m.name, m.key)
+  if (m.kind === 'local') await subscribeLocalChannel(m.name)
+  else await subscribeChannel(m.name, m.key)
 }

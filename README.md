@@ -45,6 +45,7 @@ Run `/parley` on first launch to set your display name.
 |---------|-------------|
 | `/parley` | Show status, set identity on first use |
 | `/start-channel <name>` | Create and join a channel |
+| `/local-channel <name>` | Create/join a same-machine channel (FS-backed, no Ably) |
 | `/invite-channel <name>` | Mint a join key to share |
 | `/join-channel <key>` | Join with an invite key |
 | `/leave-channel <name>` | Leave a channel |
