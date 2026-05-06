@@ -1,6 +1,6 @@
 {
   "name": "parley",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Parley — Claude Code channel messaging over Ably. Send messages between sessions on any machine.",
   "author": { "name": "Zabaca" },
   "keywords": ["messaging", "channel", "mcp", "ably", "multi-session"],

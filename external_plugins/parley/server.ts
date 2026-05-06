@@ -6,9 +6,20 @@ import { randomUUID } from 'crypto'
 import * as fs from 'fs'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir, hostname } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 
 const SESSION_UUID = randomUUID()
+
+function computeProjectRoot(): string {
+  let dir = process.cwd()
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) return process.cwd()
+    dir = parent
+  }
+}
+const PROJECT_ROOT = computeProjectRoot()
 
 const PARLEY_DIR = join(homedir(), '.claude', 'parley')
 const LOCAL_DIR = join(PARLEY_DIR, 'local')
@@ -47,6 +58,7 @@ type Membership = {
   key: string
   joinedAt: string
   invites: Invite[]
+  cwd?: string
 }
 
 function loadMemberships(): Membership[] {
@@ -59,6 +71,7 @@ function loadMemberships(): Membership[] {
       key: m.key ?? '',
       joinedAt: m.joinedAt ?? new Date().toISOString(),
       invites: m.invites ?? [],
+      cwd: m.cwd,
     }))
   } catch { return [] }
 }
@@ -303,34 +316,37 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       clientId: client.auth.clientId,
     }))
     const localSubscriptions = [...localWatchers.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
-    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), activeSubscriptions: channels, localSubscriptions, memberships }, null, 2) }] }
+    const annotated = memberships.map(m => ({ ...m, active: m.cwd === PROJECT_ROOT, orphan: m.cwd === undefined }))
+    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
   }
 
   if (name === 'start_channel') {
     const { name: channelName } = args as { name: string }
-    if (memberships.find(m => m.name === channelName))
+    if (memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT))
       return { content: [{ type: 'text', text: `Already in "${channelName}".` }] }
     const label = `parley-${channelName}-creator`
     const { keyId, fullKey } = await controlCreateKey(channelName, label)
-    memberships.push({ name: channelName, kind: 'ably', key: fullKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label, createdAt: new Date().toISOString() }] })
-    saveMemberships(memberships)
+    const cleaned = memberships.filter(m => !(m.name === channelName && m.cwd === undefined))
+    cleaned.push({ name: channelName, kind: 'ably', key: fullKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label, createdAt: new Date().toISOString() }], cwd: PROJECT_ROOT })
+    saveMemberships(cleaned)
     await subscribeChannel(channelName, fullKey)
     return { content: [{ type: 'text', text: `Created and joined "${channelName}".` }] }
   }
 
   if (name === 'local_channel') {
     const { name: channelName } = args as { name: string }
-    if (memberships.find(m => m.name === channelName))
+    if (memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT))
       return { content: [{ type: 'text', text: `Already in "${channelName}".` }] }
-    memberships.push({ name: channelName, kind: 'local', key: '', joinedAt: new Date().toISOString(), invites: [] })
-    saveMemberships(memberships)
+    const cleaned = memberships.filter(m => !(m.name === channelName && m.cwd === undefined))
+    cleaned.push({ name: channelName, kind: 'local', key: '', joinedAt: new Date().toISOString(), invites: [], cwd: PROJECT_ROOT })
+    saveMemberships(cleaned)
     await subscribeLocalChannel(channelName)
     return { content: [{ type: 'text', text: `Joined local channel "${channelName}". Any Claude Code session on this machine that runs /local-channel ${channelName} will share it.` }] }
   }
 
   if (name === 'invite_channel') {
     const { name: channelName } = args as { name: string }
-    const membership = memberships.find(m => m.name === channelName)
+    const membership = memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT)
     if (!membership) return { content: [{ type: 'text', text: `Not in "${channelName}".` }] }
     if (membership.kind === 'local') return { content: [{ type: 'text', text: `Local channels don't use invite keys.` }] }
     const label = `parley-${channelName}-invite-${membership.invites.length + 1}`
@@ -345,27 +361,28 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const colonIdx = join_key.indexOf(':')
     const channelName = join_key.slice(0, colonIdx)
     const ablyKey = join_key.slice(colonIdx + 1)
-    if (memberships.find(m => m.name === channelName))
+    if (memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT))
       return { content: [{ type: 'text', text: `Already in "${channelName}". Channel active.` }] }
     const keyId = ablyKey.split(':')[0]
-    memberships.push({ name: channelName, kind: 'ably', key: ablyKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label: 'join-key', createdAt: new Date().toISOString() }] })
-    saveMemberships(memberships)
+    const cleaned = memberships.filter(m => !(m.name === channelName && m.cwd === undefined))
+    cleaned.push({ name: channelName, kind: 'ably', key: ablyKey, joinedAt: new Date().toISOString(), invites: [{ keyId, label: 'join-key', createdAt: new Date().toISOString() }], cwd: PROJECT_ROOT })
+    saveMemberships(cleaned)
     await subscribeChannel(channelName, ablyKey)
     return { content: [{ type: 'text', text: `Joined "${channelName}".` }] }
   }
 
   if (name === 'leave_channel') {
     const { name: channelName } = args as { name: string }
-    const membership = memberships.find(m => m.name === channelName)
+    const membership = memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT)
     if (membership?.kind === 'local') unsubscribeLocalChannel(channelName)
-    else unsubscribeChannel(channelName)
-    saveMemberships(memberships.filter(m => m.name !== channelName))
+    else if (membership) unsubscribeChannel(channelName)
+    saveMemberships(memberships.filter(m => !(m.name === channelName && m.cwd === PROJECT_ROOT)))
     return { content: [{ type: 'text', text: `Left "${channelName}".` }] }
   }
 
   if (name === 'revoke_invite') {
     const { name: channelName, key_id } = args as { name: string; key_id: string }
-    const membership = memberships.find(m => m.name === channelName)
+    const membership = memberships.find(m => m.name === channelName && m.cwd === PROJECT_ROOT)
     if (!membership) return { content: [{ type: 'text', text: `Not in "${channelName}".` }] }
     if (membership.kind === 'local') return { content: [{ type: 'text', text: `Local channels don't use invite keys.` }] }
     await controlRevokeKey(key_id)
@@ -376,7 +393,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === 'send') {
     const { channel, text } = args as { channel: string; text: string }
-    const membership = memberships.find(m => m.name === channel)
+    const membership = memberships.find(m => m.name === channel && m.cwd === PROJECT_ROOT)
     if (!membership) return { content: [{ type: 'text', text: `Not in "${channel}". Join first.` }] }
     const payload = { id: randomUUID(), from: getIdentity(), text, channel, sessionId: SESSION_UUID }
     if (membership.kind === 'local') {
@@ -397,6 +414,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 await server.connect(new StdioServerTransport())
 
 for (const m of loadMemberships()) {
+  if (m.cwd !== PROJECT_ROOT) continue
   if (m.kind === 'local') await subscribeLocalChannel(m.name)
   else await subscribeChannel(m.name, m.key)
 }
