@@ -1,5 +1,3 @@
 {
-  "enabledPlugins": {
-    "git-clean-stop@zabaca-agent-tools": true
-  }
+  "enabledPlugins": {}
 }
