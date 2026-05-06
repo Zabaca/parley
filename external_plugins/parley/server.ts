@@ -11,11 +11,12 @@ import { dirname, join } from 'path'
 const SESSION_UUID = randomUUID()
 
 function computeProjectRoot(): string {
-  let dir = process.cwd()
+  const start = process.env.PWD ?? process.cwd()
+  let dir = start
   while (true) {
     if (existsSync(join(dir, '.git'))) return dir
     const parent = dirname(dir)
-    if (parent === dir) return process.cwd()
+    if (parent === dir) return start
     dir = parent
   }
 }
@@ -317,12 +318,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     }))
     const localSubscriptions = [...localWatchers.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
     const annotated = memberships.map(m => ({ ...m, active: m.cwd === PROJECT_ROOT, orphan: m.cwd === undefined }))
-    const envKeys = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) =>
-        k.startsWith('CLAUDE') || k.startsWith('INIT_') || k === 'PWD' || k === 'OLDPWD' || k === 'WORKSPACE' || k.startsWith('npm_config_') && (k.includes('cwd') || k.includes('prefix'))
-      )
-    )
-    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, processCwd: process.cwd(), envKeys, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
+    return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
   }
 
   if (name === 'start_channel') {
