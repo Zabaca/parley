@@ -4,7 +4,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 import * as Ably from 'ably'
 import { randomUUID } from 'crypto'
 import * as fs from 'fs'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { homedir, hostname } from 'os'
 import { dirname, join } from 'path'
 
@@ -82,18 +82,24 @@ function saveMemberships(m: Membership[]) {
 }
 
 const channelClients = new Map<string, Ably.Realtime>()
-const localWatchers = new Map<string, fs.FSWatcher>()
-const localSubscribeTimes = new Map<string, number>()
+type LocalState = { watcher: fs.FSWatcher; offsets: Map<string, number> }
+const localStates = new Map<string, LocalState>()
 
 function localChannelDir(name: string): string {
   return join(LOCAL_DIR, name)
+}
+
+function ownLocalFile(): string {
+  return `${SESSION_UUID}.ndjson`
 }
 
 function gcLocalChannel(name: string) {
   const dir = localChannelDir(name)
   if (!existsSync(dir)) return
   const cutoff = Date.now() - LOCAL_GC_AGE_MS
+  const own = ownLocalFile()
   for (const f of readdirSync(dir)) {
+    if (f === own) continue
     const p = join(dir, f)
     try {
       if (statSync(p).mtimeMs < cutoff) unlinkSync(p)
@@ -102,64 +108,77 @@ function gcLocalChannel(name: string) {
 }
 
 async function subscribeLocalChannel(name: string) {
-  if (localWatchers.has(name)) return
+  if (localStates.has(name)) return
   const dir = localChannelDir(name)
   mkdirSync(dir, { recursive: true })
-  const subscribeTime = Date.now()
-  localSubscribeTimes.set(name, subscribeTime)
   gcLocalChannel(name)
   log(`[parley] subscribing to local:${name} dir=${dir}\n`)
-  const seen = new Set<string>()
-  const watcher = fs.watch(dir, async (event: string, filename: string | null) => {
+  const offsets = new Map<string, number>()
+  const own = ownLocalFile()
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.ndjson') || f === own) continue
+    try { offsets.set(f, statSync(join(dir, f)).size) } catch {}
+  }
+  const watcher = fs.watch(dir, async (_event: string, filename: string | null) => {
     if (!filename) return
-    if (event !== 'rename') return
-    if (filename.endsWith('.tmp')) return
-    if (filename.includes(SESSION_UUID)) return
-    if (seen.has(filename)) return
+    if (!filename.endsWith('.ndjson')) return
+    if (filename === own) return
     const full = join(dir, filename)
     let st: fs.Stats
-    try { st = statSync(full) } catch { return }
-    if (st.mtimeMs < subscribeTime) return
-    seen.add(filename)
-    let data: { id: string; from: string; text: string; channel: string; sessionId: string }
+    try { st = statSync(full) } catch {
+      offsets.delete(filename)
+      return
+    }
+    const start = offsets.get(filename) ?? 0
+    if (st.size <= start) {
+      if (!offsets.has(filename)) offsets.set(filename, st.size)
+      return
+    }
+    let chunk: string
     try {
-      data = JSON.parse(readFileSync(full, 'utf-8'))
+      const fd = fs.openSync(full, 'r')
+      const buf = Buffer.alloc(st.size - start)
+      fs.readSync(fd, buf, 0, buf.length, start)
+      fs.closeSync(fd)
+      chunk = buf.toString('utf-8')
     } catch (e) {
       log(`[parley] local read ERROR ${filename}: ${e}\n`)
       return
     }
-    if (data.sessionId === SESSION_UUID) return
-    log(`[parley] received local message on ${name} from=${data.from} text=${data.text}\n`)
-    try {
-      await server.notification({
-        method: 'notifications/claude/channel',
-        params: { content: data.text, meta: { from: data.from, channel: name, id: data.id } },
-      })
-      log(`[parley] notification sent ok\n`)
-    } catch (e) {
-      log(`[parley] notification ERROR: ${e}\n`)
+    offsets.set(filename, st.size)
+    for (const line of chunk.split('\n')) {
+      if (!line.trim()) continue
+      let data: { id: string; from: string; text: string; channel: string; sessionId: string }
+      try { data = JSON.parse(line) }
+      catch (e) { log(`[parley] local parse ERROR ${filename}: ${e}\n`); continue }
+      if (data.sessionId === SESSION_UUID) continue
+      log(`[parley] received local message on ${name} from=${data.from} text=${data.text}\n`)
+      try {
+        await server.notification({
+          method: 'notifications/claude/channel',
+          params: { content: data.text, meta: { from: data.from, channel: name, id: data.id } },
+        })
+        log(`[parley] notification sent ok\n`)
+      } catch (e) {
+        log(`[parley] notification ERROR: ${e}\n`)
+      }
     }
     gcLocalChannel(name)
   })
-  localWatchers.set(name, watcher)
+  localStates.set(name, { watcher, offsets })
 }
 
 function unsubscribeLocalChannel(name: string) {
-  const w = localWatchers.get(name)
-  if (!w) return
-  w.close()
-  localWatchers.delete(name)
-  localSubscribeTimes.delete(name)
+  const s = localStates.get(name)
+  if (!s) return
+  s.watcher.close()
+  localStates.delete(name)
 }
 
 function publishLocal(name: string, payload: { id: string; from: string; text: string; channel: string; sessionId: string }) {
   const dir = localChannelDir(name)
   mkdirSync(dir, { recursive: true })
-  const base = `${Date.now()}-${SESSION_UUID}-${payload.id}.json`
-  const tmp = join(dir, `${base}.tmp`)
-  const final = join(dir, base)
-  writeFileSync(tmp, JSON.stringify(payload))
-  renameSync(tmp, final)
+  appendFileSync(join(dir, ownLocalFile()), JSON.stringify(payload) + '\n')
   gcLocalChannel(name)
 }
 
@@ -315,7 +334,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       channelState: client.channels.get(`parley:${ch}`).state,
       clientId: client.auth.clientId,
     }))
-    const localSubscriptions = [...localWatchers.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
+    const localSubscriptions = [...localStates.keys()].map(ch => ({ channel: ch, kind: 'local', dir: localChannelDir(ch) }))
     const annotated = memberships.map(m => ({ ...m, active: m.cwd === PROJECT_ROOT, orphan: m.cwd === undefined }))
     return { content: [{ type: 'text', text: JSON.stringify({ identity: getIdentity(), projectRoot: PROJECT_ROOT, activeSubscriptions: channels, localSubscriptions, memberships: annotated }, null, 2) }] }
   }
